@@ -177,15 +177,13 @@ router.get('/:issueId', async (req, res) => {
   }
 });
 
-// ============================================
 // CREAR ISSUE - POST /api/issues/repositories/:repoId
-// ============================================
 router.post('/repositories/:repoId', async (req, res) => {
   const { repoId } = req.params;
   const { title, description, priority = 'normal' } = req.body;
   const userId = req.headers['user-id'];
 
-  console.log('📝 POST issue - repo:', repoId, 'user:', userId);
+  console.log('📝 Creando issue - repo:', repoId, 'user:', userId);
 
   if (!userId) {
     return res.status(401).json({ error: 'Usuario no autenticado' });
@@ -196,53 +194,41 @@ router.post('/repositories/:repoId', async (req, res) => {
   }
 
   try {
-    // Verificar acceso al repositorio
-    const repoCheck = await db.query(
-      `SELECT owner_id, visibility FROM repositories WHERE id = $1`,
-      [repoId]
-    );
-    
-    if (repoCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Repositorio no encontrado' });
-    }
-    
-    const repo = repoCheck.rows[0];
-    const isOwner = repo.owner_id === parseInt(userId);
-    const isPublic = repo.visibility === 'public';
-    
-    if (!isOwner && !isPublic) {
-      const hasAccess = await checkPermission(repoId, userId, 'view');
-      if (!hasAccess) {
-        return res.status(403).json({ error: 'No tienes acceso a este repositorio' });
-      }
-    }
-
-    // Crear el issue
+    // Insertar en la base de datos
     const result = await db.query(
       `INSERT INTO issues (repository_id, title, description, priority, created_by)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [repoId, title.trim(), description, priority, userId]
+      [repoId, title.trim(), description || '', priority, userId]
     );
 
-    // Registrar actividad
-    await logActivity({
-      userId: userId,
-      action: 'create_issue',
-      actionType: 'create',
-      repositoryId: repoId,
-      details: { issueId: result.rows[0].id, title: title.trim() }
-    }, req);
-    await notificationService.notifyIssue(repoId, userId, userId, title);
+    console.log('✅ Issue creado:', result.rows[0].id);
 
-    res.status(201).json({ 
-      success: true, 
-      message: 'Issue creado correctamente',
+    // Registrar actividad (con try-catch para que no falle)
+    try {
+      await logActivity({
+        userId: userId,
+        action: 'create_issue',
+        actionType: 'create',
+        repositoryId: repoId,
+        details: { issueId: result.rows[0].id, title: title.trim() }
+      }, req);
+    } catch (logError) {
+      console.log('⚠️ Error en logActivity (no crítico):', logError.message);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Incidencia creada correctamente',
       issue: result.rows[0]
     });
+
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error al crear issue:', error);
+    res.status(500).json({
+      error: error.message,
+      details: 'Error al crear la incidencia'
+    });
   }
 });
 
