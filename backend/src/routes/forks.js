@@ -246,25 +246,126 @@ router.post('/repositories/:forkId/sync', async (req, res) => {
 // OBTENER FORKS DE UN REPOSITORIO
 // GET /api/forks/repositories/:repoId
 // ============================================
-router.get('/repositories/:repoId', async (req, res) => {
+// CREAR FORK - POST /api/forks/repositories/:repoId
+router.post('/repositories/:repoId', async (req, res) => {
   const { repoId } = req.params;
+  const userId = req.headers['user-id'];
 
-  console.log('📋 Obteniendo forks del repo:', repoId);
+  console.log('🍴 Creando fork del repo:', repoId, 'por usuario:', userId);
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Usuario no autenticado' });
+  }
 
   try {
-    const result = await db.query(
-      `SELECT f.*, u.username as forked_by_username, r.name as forked_repo_name
-       FROM forks f
-       JOIN users u ON f.forked_by = u.id
-       JOIN repositories r ON f.forked_repo_id = r.id
-       WHERE f.original_repo_id = $1
-       ORDER BY f.created_at DESC`,
+    // Verificar que el repositorio existe
+    const repoCheck = await db.query(
+      `SELECT id, owner_id, visibility, name, description, repo_type FROM repositories WHERE id = $1`,
       [repoId]
     );
     
-    res.json(result.rows);
+    if (repoCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Repositorio no encontrado' });
+    }
+    
+    const repo = repoCheck.rows[0];
+    
+    // No se puede forkear tu propio repositorio
+    if (repo.owner_id === parseInt(userId)) {
+      return res.status(400).json({ error: 'No puedes forkear tu propio repositorio' });
+    }
+    
+    // Solo repositorios públicos
+    if (repo.visibility !== 'public') {
+      return res.status(403).json({ error: 'Solo puedes forkear repositorios públicos' });
+    }
+    
+    // Verificar si ya hizo fork
+    const existingFork = await db.query(
+      `SELECT * FROM forks WHERE original_repo_id = $1 AND forked_by = $2`,
+      [repoId, userId]
+    );
+    
+    if (existingFork.rows.length > 0) {
+      const forkRepo = await db.query(
+        `SELECT * FROM repositories WHERE id = $1`,
+        [existingFork.rows[0].forked_repo_id]
+      );
+      return res.json({ 
+        success: true, 
+        forked: false, 
+        message: 'Ya tienes un fork de este repositorio',
+        repository: forkRepo.rows[0]
+      });
+    }
+    
+    // Crear el fork
+    const newRepoName = `${repo.name}-fork`;
+    const newRepo = await db.query(
+      `INSERT INTO repositories (name, description, repo_type, visibility, owner_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [newRepoName, repo.description, repo.repo_type, 'private', userId]
+    );
+    
+    const newRepoId = newRepo.rows[0].id;
+    
+    // Copiar archivos
+    const files = await db.query(
+      `SELECT file_path, file_name, file_size, content FROM files WHERE repository_id = $1`,
+      [repoId]
+    );
+    
+    for (const file of files.rows) {
+      await db.query(
+        `INSERT INTO files (repository_id, file_path, file_name, file_size, content)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [newRepoId, file.file_path, file.file_name, file.file_size, file.content]
+      );
+    }
+    
+    // Registrar fork
+    await db.query(
+      `INSERT INTO forks (original_repo_id, forked_repo_id, forked_by)
+       VALUES ($1, $2, $3)`,
+      [repoId, newRepoId, userId]
+    );
+    
+    // Actualizar contador
+    await db.query(
+      `UPDATE repositories SET forks_count = forks_count + 1 WHERE id = $1`,
+      [repoId]
+    );
+    
+    // 👇 RESPONDER ANTES DE HACER LOGS Y NOTIFICACIONES
+    res.json({ 
+      success: true, 
+      forked: true,
+      message: 'Fork creado correctamente',
+      repository: newRepo.rows[0]
+    });
+    
+    // 👇 LOGS Y NOTIFICACIONES DESPUÉS DE RESPONDER (en background)
+    try {
+      await logActivity({
+        userId: userId,
+        action: 'fork_repository',
+        actionType: 'create',
+        repositoryId: newRepoId,
+        details: { originalRepoId: repoId }
+      }, req);
+    } catch (logError) {
+      console.log('⚠️ Error en logActivity (no crítico):', logError.message);
+    }
+
+    try {
+      await notificationService.notifyFork(repoId, userId, userId);
+    } catch (notifError) {
+      console.log('⚠️ Error en notificación (no crítico):', notifError.message);
+    }
+    
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error al crear fork:', error);
     res.status(500).json({ error: error.message });
   }
 });
