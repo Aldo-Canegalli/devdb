@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  # PostgreSQL - Base de datos principal
+  devdb_postgres:
+    image: postgres:16-alpine
+    container_name: devdb_postgres
+    environment:
+      POSTGRES_USER: devdb_user
+      POSTGRES_PASSWORD: devdb_password
+      POSTGRES_DB: devdb_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - devdb_postgres_data:/var/lib/postgresql/data
+    networks:
+      - devdb_network
+    restart: unless-stopped
+
+  # Redis - Caché y WebSockets
+  devdb_redis:
+    image: redis:7-alpine
+    container_name: devdb_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - devdb_redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - devdb_network
+    restart: unless-stopped
+
+  # MinIO - Almacenamiento de archivos (juegos, códigos, textos)
+  devdb_minio:
+    image: minio/minio:latest
+    container_name: devdb_minio
+    environment:
+      MINIO_ROOT_USER: devdb_admin
+      MINIO_ROOT_PASSWORD: devdb_admin123
+    ports:
+      - "9000:9000" # API
+      - "9001:9001" # Consola web
+    command: server /data --console-address ":9001"
+    volumes:
+      - devdb_minio_data:/data
+    networks:
+      - devdb_network
+    restart: unless-stopped
+
+# Volúmenes para persistir datos
+volumes:
+  devdb_postgres_data:
+  devdb_redis_data:
+  devdb_minio_data:
+
+# Red interna
+networks:
+  devdb_network:
+    driver: bridge

@@ -1,0 +1,17 @@
+
+{
+  "name": "devdb",
+  "version": "1.0.0",
+  "description": "Plataforma Steam-like para desarrolladores",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "dev:backend": "cd backend && pnpm dev",
+    "dev:frontend": "cd frontend && pnpm dev",
+    "docker:up": "cd docker && docker-compose up -d",
+    "docker:down": "cd docker && docker-compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
