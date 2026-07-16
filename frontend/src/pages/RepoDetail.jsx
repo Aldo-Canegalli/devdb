@@ -33,7 +33,7 @@ function RepoDetail() {
   
   const [isStarred, setIsStarred] = useState(false);
   const [starsCount, setStarsCount] = useState(0);
-  const [isStarring, setIsStarring] = useState(false); // 👈 Nuevo estado para evitar clics rápidos
+  const [isStarring, setIsStarring] = useState(false);
 
   // Estados para etiquetas
   const [tags, setTags] = useState([]);
@@ -43,6 +43,7 @@ function RepoDetail() {
   // Estados para Pull Requests
   const [prCount, setPrCount] = useState(0);
   const [showCreatePR, setShowCreatePR] = useState(false);
+  const [hasFork, setHasFork] = useState(false);
   
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isOwner = repo?.owner_id === user?.id;
@@ -92,13 +93,25 @@ function RepoDetail() {
       .catch(error => console.error('Error:', error));
   };
 
+  const checkForkStatus = async () => {
+    if (!user.id || isOwner) return;
+    
+    try {
+      const response = await api.get(`/forks/repositories/${id}/check`, {
+        headers: { 'user-id': user.id }
+      });
+      setHasFork(response.data.hasForked);
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
   const handleStar = async () => {
     if (!user.id) {
       navigate('/login');
       return;
     }
     
-    // 👇 Evitar clics múltiples mientras se procesa
     if (isStarring) return;
     setIsStarring(true);
 
@@ -283,6 +296,7 @@ function RepoDetail() {
     loadFiles();
     checkStarred();
     loadPRCount();
+    checkForkStatus();
   }, [id]);
 
   useEffect(() => {
@@ -415,6 +429,7 @@ function RepoDetail() {
                 onForkSuccess={() => {
                   loadRepo();
                   loadFiles();
+                  checkForkStatus();
                 }}
               />
             )}
@@ -425,6 +440,16 @@ function RepoDetail() {
                 className="bg-[#01c38e] hover:bg-emerald-500 text-[#1a1e29] font-bold px-4 py-2 rounded-lg"
               >
                 🔑 Generar Token
+              </button>
+            )}
+
+            {/* Botón Nuevo Pull Request - solo si tiene fork */}
+            {user.id && !isOwner && hasFork && (
+              <button
+                onClick={() => setShowCreatePR(true)}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-lg transition"
+              >
+                + Nuevo Pull Request
               </button>
             )}
           </div>
@@ -772,7 +797,8 @@ function RepoDetail() {
             <p className="text-gray-400 text-sm">
               {prCount} Pull Request{prCount !== 1 ? 's' : ''} abiertos
             </p>
-            {isOwner && (
+            {/* Botón Nuevo PR dentro de la pestaña - solo si tiene fork */}
+            {user.id && !isOwner && hasFork && (
               <button
                 onClick={() => setShowCreatePR(true)}
                 className="bg-[#01c38e] hover:bg-emerald-500 text-[#1a1e29] font-bold px-4 py-2 rounded-lg transition"
