@@ -103,7 +103,7 @@ async function syncRepository(forkedRepoId, userId) {
     );
   }
   
-  // Actualizar metadata del fork (nombre, descripción) si cambiaron
+  // Actualizar metadata del fork
   const originalRepo = await db.query(
     `SELECT name, description FROM repositories WHERE id = $1`,
     [originalRepoId]
@@ -129,124 +129,35 @@ async function syncRepository(forkedRepoId, userId) {
 }
 
 // ============================================
-// CREAR FORK - POST /api/forks/repositories/:repoId
+// OBTENER FORKS DE UN REPOSITORIO (NUEVA RUTA)
+// GET /api/forks/repositories/:repoId
 // ============================================
-router.post('/repositories/:repoId', async (req, res) => {
+router.get('/repositories/:repoId', async (req, res) => {
   const { repoId } = req.params;
-  const userId = req.headers['user-id'];
 
-  console.log('🍴 Creando fork del repo:', repoId, 'por usuario:', userId);
-
-  if (!userId) {
-    return res.status(401).json({ error: 'Usuario no autenticado' });
-  }
+  console.log('📋 Obteniendo forks del repo:', repoId);
 
   try {
-    // Verificar que el repositorio existe y es público
-    const repoCheck = await db.query(
-      `SELECT id, owner_id, visibility FROM repositories WHERE id = $1`,
+    const result = await db.query(
+      `SELECT f.*, u.username as forked_by_username, r.name as forked_repo_name
+       FROM forks f
+       JOIN users u ON f.forked_by = u.id
+       JOIN repositories r ON f.forked_repo_id = r.id
+       WHERE f.original_repo_id = $1
+       ORDER BY f.created_at DESC`,
       [repoId]
     );
     
-    if (repoCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Repositorio no encontrado' });
-    }
-    
-    const repo = repoCheck.rows[0];
-    
-    // No se puede forkear tu propio repositorio
-    if (repo.owner_id === parseInt(userId)) {
-      return res.status(400).json({ error: 'No puedes forkear tu propio repositorio' });
-    }
-    
-    // Solo se pueden forkear repositorios públicos
-    if (repo.visibility !== 'public') {
-      return res.status(403).json({ error: 'Solo puedes forkear repositorios públicos' });
-    }
-    
-    // Verificar si ya hizo fork antes
-    const existingFork = await db.query(
-      `SELECT * FROM forks WHERE original_repo_id = $1 AND forked_by = $2`,
-      [repoId, userId]
-    );
-    
-    if (existingFork.rows.length > 0) {
-      // Devolver el fork existente
-      const forkRepo = await db.query(
-        `SELECT * FROM repositories WHERE id = $1`,
-        [existingFork.rows[0].forked_repo_id]
-      );
-      return res.json({ 
-        success: true, 
-        forked: false, 
-        message: 'Ya tienes un fork de este repositorio',
-        repository: forkRepo.rows[0]
-      });
-    }
-    
-    // Crear el fork
-    const newRepo = await copyRepository(repoId, userId);
-    
-    // Registrar actividad
-    await logActivity({
-      userId: userId,
-      action: 'fork_repository',
-      actionType: 'create',
-      repositoryId: newRepo.id,
-      details: { originalRepoId: repoId }
-    }, req);
-
-   await notificationService.notifyFork(repoId, userId, userId);
-    
-    res.json({ 
-      success: true, 
-      forked: true,
-      message: 'Fork creado correctamente',
-      repository: newRepo
-    });
+    res.json(result.rows);
   } catch (error) {
-    console.error('Error al crear fork:', error);
+    console.error('Error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ============================================
-// SINCRONIZAR FORK - POST /api/forks/repositories/:forkId/sync
-// ============================================
-router.post('/repositories/:forkId/sync', async (req, res) => {
-  const { forkId } = req.params;
-  const userId = req.headers['user-id'];
-
-  console.log('🔄 Sincronizando fork:', forkId, 'por usuario:', userId);
-
-  if (!userId) {
-    return res.status(401).json({ error: 'Usuario no autenticado' });
-  }
-
-  try {
-    const result = await syncRepository(forkId, userId);
-    
-    // Registrar actividad
-    await logActivity({
-      userId: userId,
-      action: 'sync_fork',
-      actionType: 'update',
-      repositoryId: forkId,
-      details: { synced: true }
-    }, req);
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Error al sincronizar:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============================================
-// OBTENER FORKS DE UN REPOSITORIO
-// GET /api/forks/repositories/:repoId
 // ============================================
 // CREAR FORK - POST /api/forks/repositories/:repoId
+// ============================================
 router.post('/repositories/:repoId', async (req, res) => {
   const { repoId } = req.params;
   const userId = req.headers['user-id'];
@@ -300,58 +211,22 @@ router.post('/repositories/:repoId', async (req, res) => {
     }
     
     // Crear el fork
-    const newRepoName = `${repo.name}-fork`;
-    const newRepo = await db.query(
-      `INSERT INTO repositories (name, description, repo_type, visibility, owner_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [newRepoName, repo.description, repo.repo_type, 'private', userId]
-    );
+    const newRepo = await copyRepository(repoId, userId);
     
-    const newRepoId = newRepo.rows[0].id;
-    
-    // Copiar archivos
-    const files = await db.query(
-      `SELECT file_path, file_name, file_size, content FROM files WHERE repository_id = $1`,
-      [repoId]
-    );
-    
-    for (const file of files.rows) {
-      await db.query(
-        `INSERT INTO files (repository_id, file_path, file_name, file_size, content)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [newRepoId, file.file_path, file.file_name, file.file_size, file.content]
-      );
-    }
-    
-    // Registrar fork
-    await db.query(
-      `INSERT INTO forks (original_repo_id, forked_repo_id, forked_by)
-       VALUES ($1, $2, $3)`,
-      [repoId, newRepoId, userId]
-    );
-    
-    // Actualizar contador
-    await db.query(
-      `UPDATE repositories SET forks_count = forks_count + 1 WHERE id = $1`,
-      [repoId]
-    );
-    
-    // 👇 RESPONDER ANTES DE HACER LOGS Y NOTIFICACIONES
     res.json({ 
       success: true, 
       forked: true,
       message: 'Fork creado correctamente',
-      repository: newRepo.rows[0]
+      repository: newRepo
     });
-    
-    // 👇 LOGS Y NOTIFICACIONES DESPUÉS DE RESPONDER (en background)
+
+    // Logs y notificaciones en background (no bloquean la respuesta)
     try {
       await logActivity({
         userId: userId,
         action: 'fork_repository',
         actionType: 'create',
-        repositoryId: newRepoId,
+        repositoryId: newRepo.id,
         details: { originalRepoId: repoId }
       }, req);
     } catch (logError) {
@@ -366,6 +241,38 @@ router.post('/repositories/:repoId', async (req, res) => {
     
   } catch (error) {
     console.error('Error al crear fork:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// SINCRONIZAR FORK - POST /api/forks/repositories/:forkId/sync
+// ============================================
+router.post('/repositories/:forkId/sync', async (req, res) => {
+  const { forkId } = req.params;
+  const userId = req.headers['user-id'];
+
+  console.log('🔄 Sincronizando fork:', forkId, 'por usuario:', userId);
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Usuario no autenticado' });
+  }
+
+  try {
+    const result = await syncRepository(forkId, userId);
+    
+    // Registrar actividad
+    await logActivity({
+      userId: userId,
+      action: 'sync_fork',
+      actionType: 'update',
+      repositoryId: forkId,
+      details: { synced: true }
+    }, req);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error al sincronizar:', error);
     res.status(500).json({ error: error.message });
   }
 });
