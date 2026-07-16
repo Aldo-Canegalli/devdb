@@ -29,6 +29,8 @@ const pullRequestsRoutes = require('./src/routes/pullRequests');
 const conversationsRoutes = require('./src/routes/conversations');
 const messagesRoutes = require('./src/routes/messages');
 const notificationsRoutes = require('./src/routes/notifications');
+const issuesRoutes = require('./src/routes/issues');
+
 // Registrar rutas
 app.use('/api/users', usersRoutes);
 app.use('/api/repositories', repositoriesRoutes);
@@ -45,6 +47,8 @@ app.use('/api/pull-requests', pullRequestsRoutes);
 app.use('/api/conversations', conversationsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/issues', issuesRoutes);
+
 
 // Ruta de health check
 app.get('/api/health', (req, res) => {
