@@ -23,7 +23,7 @@ function FileUploader({ repoId, onUploadSuccess }) {
 
     try {
       const response = await api.post(`/repositories/${repoId}/files`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data', 'user-id': user.id }
       });
 
       setMessage('✅ Archivo subido correctamente');
