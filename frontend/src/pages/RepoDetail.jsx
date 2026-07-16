@@ -446,7 +446,10 @@ function RepoDetail() {
             {/* Botón Nuevo Pull Request - solo si tiene fork */}
             {user.id && !isOwner && hasFork && (
               <button
-                onClick={() => setShowCreatePR(true)}
+                onClick={() => {
+                  console.log('🔄 Abriendo modal de PR');
+                  setShowCreatePR(true);
+                }}
                 className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-lg transition"
               >
                 + Nuevo Pull Request
@@ -902,6 +905,22 @@ function RepoDetail() {
           </div>
         </div>
       )}
+
+      {/* 👇 MODAL DE PULL REQUEST - AL FINAL 👇 */}
+      <CreatePRModal
+        isOpen={showCreatePR}
+        onClose={() => {
+          console.log('🔴 Cerrando modal de PR');
+          setShowCreatePR(false);
+        }}
+        repoId={id}
+        repoName={repo?.name}
+        onSuccess={() => {
+          console.log('✅ PR creado exitosamente');
+          loadPRCount();
+          setShowCreatePR(false);
+        }}
+      />
     </div>
   );
 }
