@@ -9,7 +9,6 @@ import ForkButton from '../components/ForkButton';
 import IssuesList from '../components/IssuesList';
 import TagSelector from '../components/TagSelector';
 import CreatePRModal from '../components/CreatePRModal';
-import SkeletonCard from '../components/SkeletonCard';
 
 function RepoDetail() {
   const { id } = useParams();
@@ -34,6 +33,7 @@ function RepoDetail() {
   
   const [isStarred, setIsStarred] = useState(false);
   const [starsCount, setStarsCount] = useState(0);
+  const [isStarring, setIsStarring] = useState(false); // 👈 Nuevo estado para evitar clics rápidos
 
   // Estados para etiquetas
   const [tags, setTags] = useState([]);
@@ -98,6 +98,10 @@ function RepoDetail() {
       return;
     }
     
+    // 👇 Evitar clics múltiples mientras se procesa
+    if (isStarring) return;
+    setIsStarring(true);
+
     try {
       if (isStarred) {
         await api.delete(`/repositories/${id}/star`, {
@@ -117,6 +121,10 @@ function RepoDetail() {
       setTimeout(() => setMessage(''), 2000);
     } catch (error) {
       console.error('Error:', error);
+      setMessage('❌ Error al procesar la estrella');
+      setTimeout(() => setMessage(''), 2000);
+    } finally {
+      setIsStarring(false);
     }
   };
 
@@ -283,23 +291,14 @@ function RepoDetail() {
     }
   }, [isOwner, repo]);
 
-if (loading && !repo) {
-  return (
-    <div className="container mx-auto px-6 py-16">
-      <SkeletonCard type="profile" />
-      <div className="mt-8">
-        <div className="border-b border-gray-700 mb-6 flex gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 w-24 bg-gray-700/50 rounded animate-pulse"></div>
-          ))}
-        </div>
-        {[1, 2, 3, 4].map((i) => (
-          <SkeletonCard key={i} type="file" />
-        ))}
+  if (loading && !repo) {
+    return (
+      <div className="container mx-auto px-6 py-16 text-center">
+        <div className="inline-block w-12 h-12 border-4 border-[#01c38e] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-gray-400 mt-4">Cargando repositorio...</p>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   if (!repo) {
     return (
@@ -325,6 +324,7 @@ if (loading && !repo) {
               {repo.repo_type === 'game' && <span className="text-3xl">🎮</span>}
               {repo.repo_type === 'code' && <span className="text-3xl">&lt;/&gt;</span>}
               {repo.repo_type === 'txt' && <span className="text-3xl">📚</span>}
+              {repo.repo_type === 'mixed' && <span className="text-3xl">📦</span>}
               <h1 className="text-3xl font-bold text-white">{repo.name}</h1>
               <span className={`text-xs px-2 py-1 rounded ${
                 repo.visibility === 'public' ? 'bg-green-600' : 
@@ -400,9 +400,10 @@ if (loading && !repo) {
           <div className="flex gap-3 flex-wrap">
             <button
               onClick={handleStar}
+              disabled={isStarring}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
                 isStarred ? 'bg-yellow-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-              }`}
+              } disabled:opacity-50`}
             >
               ⭐ {starsCount}
             </button>
@@ -679,7 +680,6 @@ if (loading && !repo) {
                 />
               </div>
             </div>
-            
             <button
               onClick={handleGenerateToken}
               disabled={generatingToken}
@@ -772,14 +772,14 @@ if (loading && !repo) {
             <p className="text-gray-400 text-sm">
               {prCount} Pull Request{prCount !== 1 ? 's' : ''} abiertos
             </p>
-            {user.id && !isOwner && (
-        <button
-       onClick={() => setShowCreatePR(true)}
-        className="bg-[#01c38e] hover:bg-emerald-500 text-[#1a1e29] font-bold px-4 py-2 rounded-lg transition"
-        >
-              + Nuevo Pull Request
-         </button>
-        )}
+            {isOwner && (
+              <button
+                onClick={() => setShowCreatePR(true)}
+                className="bg-[#01c38e] hover:bg-emerald-500 text-[#1a1e29] font-bold px-4 py-2 rounded-lg transition"
+              >
+                + Nuevo Pull Request
+              </button>
+            )}
           </div>
 
           <Link 

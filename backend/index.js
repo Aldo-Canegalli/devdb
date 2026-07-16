@@ -30,6 +30,7 @@ const conversationsRoutes = require('./src/routes/conversations');
 const messagesRoutes = require('./src/routes/messages');
 const notificationsRoutes = require('./src/routes/notifications');
 const issuesRoutes = require('./src/routes/issues');
+const forksRoutes = require('./src/routes/forks');
 
 // Registrar rutas
 app.use('/api/users', usersRoutes);
@@ -48,6 +49,7 @@ app.use('/api/conversations', conversationsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/issues', issuesRoutes);
+app.use('/api/forks', forksRoutes);
 
 
 // Ruta de health check
