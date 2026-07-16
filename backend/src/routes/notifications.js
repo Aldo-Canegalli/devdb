@@ -7,31 +7,37 @@ const router = express.Router();
 // OBTENER NOTIFICACIONES DEL USUARIO
 // GET /api/notifications
 // ============================================
+// OBTENER NOTIFICACIONES DEL USUARIO
 router.get('/', async (req, res) => {
-    const userId = req.headers['user-id'];
-    const { limit = 50, unreadOnly = 'false' } = req.query;
+  const userId = req.headers['user-id'];
+  const { limit = 50, unreadOnly = 'false' } = req.query;
 
-    if (!userId) {
-        return res.status(401).json({ error: 'Usuario no autenticado' });
-    }
+  if (!userId) {
+    return res.status(401).json({ error: 'Usuario no autenticado' });
+  }
 
-    try {
-        const notifications = await notificationService.getUserNotifications(
-            userId,
-            parseInt(limit),
-            unreadOnly === 'true'
-        );
-        const unreadCount = await notificationService.getUnreadCount(userId);
-        
-        res.json({
-            notifications,
-            unreadCount,
-            total: notifications.length
-        });
-    } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: error.message });
-    }
+  try {
+    const notifications = await notificationService.getUserNotifications(
+      userId,
+      parseInt(limit),
+      unreadOnly === 'true'
+    );
+    const unreadCount = await notificationService.getUnreadCount(userId);
+    
+    res.json({
+      notifications: notifications || [],  // ← Asegurar que siempre sea un array
+      unreadCount: unreadCount || 0,
+      total: notifications?.length || 0
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    // En lugar de error 500, devolver array vacío
+    res.json({
+      notifications: [],
+      unreadCount: 0,
+      total: 0
+    });
+  }
 });
 
 // ============================================
