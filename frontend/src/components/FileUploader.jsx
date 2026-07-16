@@ -5,6 +5,7 @@ function FileUploader({ repoId, onUploadSuccess }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
