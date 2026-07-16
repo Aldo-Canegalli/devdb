@@ -64,6 +64,10 @@ app.get('/api/test-db', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+// Ruta de prueba simple (última opción)
+app.get('/test', (req, res) => {
+  res.send('DevDB backend is alive!');
+});
 
 // Manejo de errores
 process.on('uncaughtException', (err) => {
